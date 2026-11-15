@@ -50,9 +50,36 @@ type Alert = Pick<
   Reading,
   "id" | "device_id" | "timestamp" | "severity" | "risk_score" | "reasons"
 >;
+type PhysicalReading = {
+  device_id: string;
+  timestamp: string;
+  source: string;
+  boot_id: string;
+  wifi_connected: boolean;
+  wifi_rssi_dbm: number | null;
+  uptime_ms: number;
+  wifi_reconnects: number;
+  http_requests_completed: number;
+  http_successes: number;
+  http_failures: number;
+  http_payload_bytes_attempted: number;
+  http_payload_bytes_accepted: number;
+  last_http_status: number | null;
+  risk_score: null;
+  detection_status: string;
+};
+type PhysicalDevice = {
+  id: string;
+  name: string;
+  latest: PhysicalReading | null;
+  last_seen_status: "never_seen" | "recent" | "stale";
+  seconds_since_seen: number | null;
+};
 type Snapshot = {
   demo: { running: boolean; mode: string; last_error: string | null };
   devices: { id: string; name: string; latest: Reading | null }[];
+  physical_devices?: PhysicalDevice[];
+  physical_telemetry_count?: number;
   telemetry: Reading[];
   alerts: Alert[];
   summary: { telemetry_count: number; alert_count: number };
@@ -71,8 +98,8 @@ const pages = [
   { name: "Analytics", icon: ChartNoAxesCombined },
 ];
 const time = (s: string) => new Date(s).toLocaleTimeString();
-const num = (v: number | undefined, digits = 0) =>
-  v === undefined
+const num = (v: number | null | undefined, digits = 0) =>
+  v == null
     ? "—"
     : v.toLocaleString(undefined, { maximumFractionDigits: digits });
 async function request(path: string, options?: RequestInit) {
@@ -187,9 +214,9 @@ function App() {
           <Radio size={20} />
           <b>Software demo</b>
           <p>
-            Synthetic telemetry only.
+            Demo telemetry is synthetic.
             <br />
-            No network traffic is captured.
+            Physical boards report local health; no packet capture.
           </p>
           <span className="pill">COLLEGE PROJECT · MVP</span>
         </div>
@@ -218,14 +245,14 @@ function App() {
                 {page === "Overview"
                   ? "Your IoT network, in focus."
                   : page === "Devices"
-                    ? "Two simulated ESP32 devices. One connected view."
+                    ? "Physical ESP32 health and simulated network behaviour."
                     : page === "Threat Detection"
                       ? "Understand every signal behind the score."
                       : "Explore the behaviour behind your telemetry."}
               </p>
             </div>
             <span className="synthetic">
-              <Radio size={14} /> SYNTHETIC DATA
+              <Radio size={14} /> SYNTHETIC NETWORK DEMO
             </span>
           </div>
           {error && (
@@ -296,13 +323,13 @@ function App() {
             <>
               <div className="stats">
                 <Stat
-                  label="Registered devices"
+                  label="Demo devices"
                   value={String(data.devices.length)}
                   note="Simulated ESP32 endpoints"
                   icon={<Cpu />}
                 />
                 <Stat
-                  label="Telemetry records"
+                  label="Network telemetry records"
                   value={num(data.summary.telemetry_count)}
                   note="Persisted in SQLite"
                   icon={<Activity />}
@@ -314,12 +341,18 @@ function App() {
                   icon={<AlertTriangle />}
                 />
                 <Stat
-                  label="Latest mean risk"
+                  label="Network mean risk"
                   value={risk === undefined ? "—" : risk.toFixed(2)}
                   note="Heuristic score · 0 to 1"
                   icon={<Shield />}
                 />
               </div>
+              {(page === "Overview" || page === "Devices") && (
+                <PhysicalDevices
+                  devices={data.physical_devices || []}
+                  count={data.physical_telemetry_count || 0}
+                />
+              )}
               {page === "Overview" && (
                 <>
                   <div className="grid-main">
@@ -448,17 +481,19 @@ function App() {
                     </div>
                   </Panel>
                   <div className="notice">
-                    Device-reported counters are supported by the REST schema.
-                    Physical ESP32 firmware and independent packet capture are
-                    not implemented.
+                    Network charts and intrusion scores use the existing
+                    aggregate-counter pipeline. Physical boards report health
+                    and application HTTP counters separately above. Packet/flow
+                    measurements are unavailable on this firmware; no packet
+                    capture occurs.
                   </div>
                 </>
               )}
               {page === "Threat Detection" && (
                 <>
                   <Panel
-                    title="Signal breakdown"
-                    subtitle="Latest reading per device · scores range from 0 to 1"
+                    title="Network signal breakdown"
+                    subtitle="Aggregate network-counter devices only · physical health reports are not scored"
                   >
                     <div className="signal-grid">
                       {data.devices.map((d) => (
@@ -771,6 +806,96 @@ function DeviceCards({ devices }: { devices: Snapshot["devices"] }) {
         );
       })}
     </div>
+  );
+}
+function PhysicalDevices({
+  devices,
+  count,
+}: {
+  devices: PhysicalDevice[];
+  count: number;
+}) {
+  return (
+    <Panel
+      title="Physical ESP32 devices"
+      subtitle={`${num(count)} stored health reports · uppercase IDs · expected every 5 seconds`}
+    >
+      <div className="physical-grid">
+        {devices.map((device) => {
+          const r = device.latest;
+          return (
+            <article className="device-card" key={device.id}>
+              <div className="device-head">
+                <span className="chip-icon">
+                  <Cpu size={24} />
+                </span>
+                <span
+                  className={
+                    "badge " +
+                    (device.last_seen_status === "recent" ? "low" : "offline")
+                  }
+                >
+                  {device.last_seen_status === "recent"
+                    ? "Recent report"
+                    : device.last_seen_status === "stale"
+                      ? "Stale · connectivity unknown"
+                      : "Not seen yet"}
+                </span>
+              </div>
+              <h3>{device.id} · Physical DevKit</h3>
+              {r ? (
+                <>
+                  <p className="muted">
+                    Device-reported health · boot {r.boot_id}
+                  </p>
+                  <dl className="physical-metrics">
+                    <dt>Wi-Fi RSSI (at sample)</dt>
+                    <dd>
+                      {num(r.wifi_rssi_dbm)}{" "}
+                      {r.wifi_rssi_dbm !== null ? "dBm" : ""}
+                    </dd>
+                    <dt>Uptime (at sample)</dt>
+                    <dd>{num(r.uptime_ms / 1000, 1)} s</dd>
+                    <dt>Wi-Fi (last reported)</dt>
+                    <dd>{r.wifi_connected ? "Connected" : "Disconnected"}</dd>
+                    <dt>Observed Wi-Fi reconnections</dt>
+                    <dd>{num(r.wifi_reconnects)}</dd>
+                    <dt>Completed HTTP attempts</dt>
+                    <dd>{num(r.http_requests_completed)}</dd>
+                    <dt>HTTP successes / failures</dt>
+                    <dd>
+                      {num(r.http_successes)} / {num(r.http_failures)}
+                    </dd>
+                    <dt>Payload bytes attempted / accepted</dt>
+                    <dd>
+                      {num(r.http_payload_bytes_attempted)} /{" "}
+                      {num(r.http_payload_bytes_accepted)}
+                    </dd>
+                    <dt>Previous HTTP result</dt>
+                    <dd>{num(r.last_http_status)}</dd>
+                  </dl>
+                  <div className="device-foot">
+                    Received {time(r.timestamp)} ·{" "}
+                    {num(device.seconds_since_seen, 1)} s ago
+                  </div>
+                </>
+              ) : (
+                <p className="muted">
+                  Awaiting a report from this board. Upload the firmware and
+                  configure the laptop LAN IP.
+                </p>
+              )}
+              <div className="notice physical-note">
+                Network risk: unavailable. Packet rate, wire byte rate,
+                destinations and port diversity are not measured. HTTP counters
+                cover this firmware only, since boot, excluding the current
+                request.
+              </div>
+            </article>
+          );
+        })}
+      </div>
+    </Panel>
   );
 }
 function Alerts({ alerts }: { alerts: Alert[] }) {

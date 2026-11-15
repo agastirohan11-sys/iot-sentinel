@@ -2,7 +2,7 @@
 
 **AI-Based Network Intrusion and Anomaly Detection — college software MVP.**
 
-A React dashboard displays live aggregate telemetry from two **simulated** ESP32 devices. FastAPI stores every telemetry window in SQLite, extracts features, combines rules with an Isolation Forest, and records explainable alerts. No actual scans, floods, attacks, independent packet capture, or hardware access occur.
+A React dashboard displays live aggregate telemetry from two **simulated** ESP32 devices. FastAPI stores every telemetry window in SQLite, extracts features, combines rules with an Isolation Forest, and records explainable alerts. Optional ESP32 firmware reports real local health and its own HTTP counters to a separate endpoint. No scans, floods, attacks, or independent packet capture occur. See [physical ESP32 setup and upload instructions](firmware/README.md).
 
 ## Requirements
 
@@ -49,7 +49,9 @@ For Linux/macOS, create the environment with `python3 -m venv .venv`, install wi
 
 ## Detection and data flow
 
-`Synthetic generator / future device → POST telemetry → validation → features → rules + ML → SQLite → REST polling → dashboard`
+`Synthetic generator / legacy aggregate counters → POST telemetry → validation → features → rules + ML → SQLite → REST polling → dashboard`
+
+`Physical ESP32 → POST physical-telemetry → validated health/counters → separate SQLite table → physical-device panel (no network risk score)`
 
 For each measurement window, the backend derives packet rate (`packets / seconds`), byte rate (`bytes / seconds`), and average packet size (`bytes / packets`, zero if no packets). Destination count and port diversity are window-level distinct counts supplied in the telemetry contract.
 
@@ -68,6 +70,7 @@ This model has **not been evaluated on real network data**. No accuracy, precisi
 | GET | `/api/health` | Database/model health and simulator state |
 | GET | `/api/dashboard` | Devices, latest 120 telemetry windows, latest 100 alerts, lifetime counts |
 | POST | `/api/demo` | `{"action":"start"}`, `stop`, `normal`, or `abnormal` |
+| POST | `/api/physical-telemetry` | Real device health and application counters, uppercase ESP32 IDs; optional X-API-Key |
 | POST | `/api/telemetry` | Validate, score, and persist counters (201); malformed data returns 422 |
 
 The ESP32-compatible JSON schema and its limitations are documented in [firmware/README.md](firmware/README.md). Receipt timestamps are assigned by the server. Database failures return a generic 503 response; simulator failures stop generation and surface a dashboard message.
@@ -111,10 +114,13 @@ iot-sentinel/
 │   ├── app/
 │   │   ├── __init__.py
 │   │   ├── main.py          # API, SQLAlchemy tables, simulator, feature extraction
-│   │   └── detection.py     # Rule and Isolation Forest scoring
+│   │   ├── detection.py     # Rule and Isolation Forest scoring
+│   │   └── physical.py      # Separate physical health schema, table and serialization
 │   └── tests/
 │       ├── test_api.py
-│       └── test_detection.py
+│       ├── test_detection.py
+│       ├── test_physical.py
+│       └── conftest.py
 ├── frontend/
 │   ├── .env.example
 │   ├── package.json
@@ -130,11 +136,19 @@ iot-sentinel/
 │   │   ├── style.css
 │   │   └── vite-env.d.ts
 │   └── tests/dashboard.spec.ts
-└── firmware/README.md       # Telemetry contract; physical firmware deferred
+└── firmware/
+    ├── README.md           # Windows LAN setup, upload steps, verification checklist
+    └── iot_sentinel/
+        ├── iot_sentinel.ino
+        └── config.example.h  # Copy locally to ignored config.h
 ```
 
 See [VALIDATION.md](VALIDATION.md) for the executed checks and limitations.
 
 ## Deliberately deferred
 
-Physical ESP32 firmware, packet capture, real-data model evaluation, authentication, deployment, and production hardening. This prototype is for local demonstration. It has no authentication, pagination beyond bounded dashboard history, record retention policy, or persistent simulator state. No transfer or push to GitHub is performed by the development commands.
+Physical board validation, packet capture, real-data model evaluation, full application authentication, deployment, and production hardening. This prototype is for local demonstration. It has optional physical-ingestion key validation but no full application authentication, pagination beyond bounded dashboard history, record retention policy, or persistent simulator state. No transfer or push to GitHub is performed by the development commands.
+
+## Physical ESP32 boards
+
+Follow [firmware/README.md](firmware/README.md) for the exact Arduino IDE procedure for two DevKits and a Windows laptop. Start FastAPI on `--host 0.0.0.0` for LAN access, configure the laptop Wi-Fi IP in ignored `config.h`, and use uppercase `ESP32-01` / `ESP32-02`. The dashboard separately shows RSSI, uptime, last reported connectivity and HTTP counters. Network features/risk remain unavailable for these boards. The original SQLite tables and data are retained; startup only creates an additional physical health table. No hardware access or physical-board test is claimed.

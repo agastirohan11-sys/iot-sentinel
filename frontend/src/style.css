@@ -794,8 +794,50 @@ footer > span:first-child {
   }
 }
 /* Keep alert explanations readable inside horizontally scrollable tables. */
-.reasons { min-width: 260px; }
+.reasons {
+  min-width: 260px;
+}
 @media (max-width: 550px) {
-  nav { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  nav a { font-size: 12px; }
+  nav {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  nav a {
+    font-size: 12px;
+  }
+}
+
+.physical-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  padding: 20px;
+}
+.physical-grid .device-card {
+  min-width: 0;
+}
+.physical-metrics {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px 14px;
+  font-size: 11px;
+  margin: 20px 0;
+}
+.physical-metrics dt {
+  color: #8496af;
+}
+.physical-metrics dd {
+  margin: 0;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+.physical-note {
+  font-size: 10px;
+  margin: 16px 0 0;
+  padding: 12px;
+}
+@media (max-width: 1100px) {
+  .physical-grid {
+    grid-template-columns: 1fr;
+  }
 }

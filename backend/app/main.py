@@ -1,5 +1,6 @@
 import asyncio
 import json
+import hmac
 import os
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
@@ -7,7 +8,7 @@ from typing import Literal
 
 import numpy as np
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from sqlalchemy import Boolean, Float, Integer, String, create_engine, select, func
@@ -16,6 +17,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
 from .detection import Detector, normal_features
+from .physical import PhysicalBase, PhysicalInput, physical_snapshot, store_physical
 
 load_dotenv()
 engine = create_engine(os.getenv('DATABASE_URL', 'sqlite:///./sentinel.db'), connect_args={'check_same_thread': False})
@@ -137,6 +139,7 @@ async def simulator():
 @asynccontextmanager
 async def lifespan(app):
     Base.metadata.create_all(engine)
+    PhysicalBase.metadata.create_all(engine)  # Additive only; never alters existing tables.
     task = asyncio.create_task(simulator())
     yield
     task.cancel()
@@ -180,6 +183,14 @@ def telemetry(payload: TelemetryInput):
     return ingest(payload)
 
 
+@app.post('/api/physical-telemetry', status_code=201)
+def physical_telemetry(payload: PhysicalInput, x_api_key: str | None = Header(default=None)):
+    expected = os.getenv('DEVICE_API_KEY', '')
+    if expected and not hmac.compare_digest(expected.encode(), (x_api_key or '').encode()):
+        raise HTTPException(401, 'Invalid or missing device API key')
+    return store_physical(payload, Session)
+
+
 @app.get('/api/dashboard')
 def dashboard():
     with Session() as session:
@@ -191,7 +202,7 @@ def dashboard():
         for device_id, name in DEVICES.items():
             latest = session.scalar(select(Telemetry).where(Telemetry.device_id == device_id).order_by(Telemetry.id.desc()).limit(1))
             devices.append({'id': device_id, 'name': name, 'latest': serialize(latest) if latest else None})
-        return {'demo': state.copy(), 'devices': devices, 'telemetry': [serialize(r) for r in reversed(latest_rows)],
+        return {**physical_snapshot(session), 'demo': state.copy(), 'devices': devices, 'telemetry': [serialize(r) for r in reversed(latest_rows)],
                 'alerts': [serialize(a) for a in alerts], 'summary': {'telemetry_count': total, 'alert_count': alert_count},
                 'model': {'name': 'Isolation Forest', 'training_samples': detector.training_samples,
                           'training_source': 'Synthetic normal behaviour', 'evaluation': 'No real-world accuracy evaluation performed'}}

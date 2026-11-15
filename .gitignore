@@ -46,3 +46,14 @@ ENV/
 *.key
 secrets/
 .secrets/
+
+# Local ESP32 Wi-Fi and optional API credentials
+firmware/**/config.h
+firmware/**/arduino_secrets.h
+
+# Arduino compiled outputs
+firmware/**/build/
+firmware/**/*.bin
+firmware/**/*.elf
+firmware/**/*.hex
+firmware/**/*.map
