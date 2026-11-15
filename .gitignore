@@ -1,0 +1,48 @@
+.env
+.venv/
+__pycache__/
+.pytest_cache/
+*.pyc
+*.db
+*.db-shm
+*.db-wal
+node_modules/
+dist/
+*.log
+*.tsbuildinfo
+playwright-report/
+test-results/
+
+# Local environment variants; keep safe templates in version control
+.env.*
+!.env.example
+venv/
+env/
+ENV/
+
+# SQLite databases and sidecar files
+*.sqlite
+*.sqlite3
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+*.sqlite3-journal
+*.sqlite3-wal
+*.sqlite3-shm
+*.db-journal
+
+# Generated trained model artifacts
+*.joblib
+*.pkl
+*.pickle
+*.onnx
+*.h5
+*.hdf5
+*.pt
+*.pth
+
+# Private credentials and local secret directories
+*.pem
+*.key
+secrets/
+.secrets/
